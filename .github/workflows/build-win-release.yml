@@ -24,15 +24,17 @@ jobs:
       - name: Build the app
         run: cargo build -r
       - name: Create build dir
-        run: mkdir build && cp ./target/release/simple-mp3-downloader.exe ./build/
+        run: mkdir build && mkdir build/libs && cp ./target/release/simple-mp3-downloader.exe ./build/
       - name: Copy dependencies
         run: |
           set MSYSTEM=UCRT64
-          msys2 -c 'ldd "./build/simple-mp3-downloader.exe" | grep "/ucrt64\/bin\/.*dll" -o | xargs -I % cp -f % "./build/"'
-      - name: Compress build
-        run: powershell Compress-Archive -Path ".\build" -DestinationPath ".\build.zip"
+          msys2 -c 'ldd "./build/simple-mp3-downloader.exe" | grep "/ucrt64\/bin\/.*dll" -o | xargs -I % cp -f % "./build/libs/"'
+      - name: Create the installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
+        with:
+          path: ./win-setup.iss
       - uses: actions/upload-artifact@v4
         with:
           name: build
-          path: .\build.zip
+          path: ./build/setup/setup.exe
 
