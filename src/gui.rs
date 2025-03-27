@@ -1,6 +1,6 @@
 use crate::drives::drive_mod::{Drive, DriveList};
 use crate::drives::get_removable_disks;
-use crate::yt::YoutubeDownloader;
+use crate::yt::{YoutubeDownloader, DEFAULT_LIB_DIR};
 use relm4::gtk::glib::{GString, clone};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, Cast, EditableExt, GtkWindowExt, WidgetExt};
 use relm4::{
@@ -8,6 +8,8 @@ use relm4::{
     adw, gtk,
 };
 use std::path::PathBuf;
+use std::time::Duration;
+use libadwaita::glib;
 use libadwaita::gtk::Orientation;
 use relm4::gtk::gdk;
 
@@ -16,19 +18,24 @@ pub enum Message {
     DriveSelection(Drive),
     LinkChanged(GString),
     Save,
+    SwitchToNormal,
 }
 
 #[derive(Debug, Clone)]
 pub enum CommandMessage {
     PreDownloadDone,
-    DownloadDone,
+    UpdateCheckDone,
+    DownloadFinished,
 }
 
+#[derive(PartialEq)]
 enum ConverterState {
     Normal,
     WrongLink,
     PreDownloading,
+    CheckingUpdate,
     Downloading,
+    TransitionFromDownloadSuccess,
 }
 
 pub struct ConverterWidgets {
@@ -39,6 +46,7 @@ pub struct ConverterWidgets {
 
 pub struct Converter {
     youtube: YoutubeDownloader,
+    update_checked: bool,
     selected_drive: Option<Drive>,
     link: GString,
     converter_state: ConverterState
@@ -74,7 +82,7 @@ impl Component for Converter {
                 Some(drives[0].clone())
             }
         };
-        let youtube = YoutubeDownloader::new(PathBuf::from("libs"));
+        let youtube = YoutubeDownloader::new(PathBuf::from(DEFAULT_LIB_DIR));
 
         let vbox = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -131,6 +139,7 @@ impl Component for Converter {
 
         let model = Converter {
             youtube,
+            update_checked: false,
             selected_drive,
             link: GString::new(),
             converter_state: ConverterState::Normal
@@ -155,36 +164,47 @@ impl Component for Converter {
                 self.converter_state = ConverterState::Normal;
             }
             Message::Save => {
-                if let Some(drive) = self.selected_drive.clone() {
-                    if !self.link.is_empty()
-                        && (self.link.starts_with("https://www.youtube.com/watch?v=")
+                if self.converter_state != ConverterState::TransitionFromDownloadSuccess {
+                    if let Some(drive) = self.selected_drive.clone() {
+                        if !self.link.is_empty()
+                            && (self.link.starts_with("https://www.youtube.com/watch?v=")
                             || self.link.starts_with("https://youtube.com/watch?v="))
-                    {
-                        self.converter_state = ConverterState::Downloading;
-                        
-                        if !self.youtube.check_prerequisites() {
-                            self.converter_state = ConverterState::PreDownloading;
-                            sender.oneshot_command(async  {
-                                YoutubeDownloader::download_prerequisites(PathBuf::from("libs")).await;
-                                CommandMessage::PreDownloadDone
-                            });
+                        {
+                            self.converter_state = ConverterState::Downloading;
+
+                            if !self.youtube.check_prerequisites() {
+                                self.converter_state = ConverterState::PreDownloading;
+                                self.update_checked = true;
+                                sender.oneshot_command(async {
+                                    YoutubeDownloader::download_prerequisites(PathBuf::from(DEFAULT_LIB_DIR)).await;
+                                    CommandMessage::PreDownloadDone
+                                });
+                            } else if !self.update_checked {
+                                self.converter_state = ConverterState::CheckingUpdate;
+                                self.update_checked = true;
+                                sender.spawn_oneshot_command(move || {
+                                    YoutubeDownloader::check_update().wait().unwrap();
+                                    CommandMessage::UpdateCheckDone
+                                });
+                            } else {
+                                let output_dir = drive.mount_point();
+                                let mut youtube = self.youtube.clone();
+                                let link = self.link.clone().to_string();
+
+                                sender.spawn_oneshot_command(move || {
+                                    youtube.download(link, &output_dir).wait().unwrap();
+                                    CommandMessage::DownloadFinished
+                                });
+                            }
                         } else {
-                            let output_dir = drive.mount_point();
-                            let mut youtube = self.youtube.clone();
-                            let link = self.link.clone().to_string();
-    
-                            sender.spawn_oneshot_command(move || {
-                                youtube.download(link, &output_dir).wait().unwrap();
-                                CommandMessage::DownloadDone
-                            });
+                            self.converter_state = ConverterState::WrongLink;
                         }
                     } else {
-                        self.converter_state = ConverterState::WrongLink;
+                        println!("TODO: Handle no drive connected or selected")
                     }
-                } else {
-                    println!("TODO: Handle no drive connected or selected")
                 }
             }
+            Message::SwitchToNormal => self.converter_state = ConverterState::Normal
         }
     }
 
@@ -195,16 +215,16 @@ impl Component for Converter {
         root: &Self::Root,
     ) {
         match message {
-            CommandMessage::PreDownloadDone => {
+            CommandMessage::PreDownloadDone | CommandMessage::UpdateCheckDone => {
                 self.update(Message::Save, sender, root);
             }
-            CommandMessage::DownloadDone => {
-                self.converter_state = ConverterState::Normal;
+            CommandMessage::DownloadFinished => {
+                self.converter_state = ConverterState::TransitionFromDownloadSuccess;
             }
         }
     }
 
-    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
+    fn update_view(&self, widgets: &mut Self::Widgets, sender: ComponentSender<Self>) {
         match self.converter_state {
             ConverterState::Normal => {
                 let save_button_content = adw::ButtonContent::builder()
@@ -230,31 +250,51 @@ impl Component for Converter {
                 }
             }
             ConverterState::PreDownloading => {
-                let hbox = gtk::Box::builder().orientation(Orientation::Horizontal).spacing(5).build();
-                let label = gtk::Label::new(Some("Téléchargement des prérequis"));
-                let spinner = adw::Spinner::new();
-                
-                hbox.append(&label);
-                hbox.append(&spinner);
-                
-                widgets.save_button.set_child(Some(&hbox));
-                widgets.save_button.set_sensitive(false);
-                widgets.device_combo.set_sensitive(false);
-                widgets.link_input.set_sensitive(false);
+                self.set_button_loading_text(widgets, "Téléchargement des prérequis");
+            }
+            ConverterState::CheckingUpdate => {
+                self.set_button_loading_text(widgets, "Vérification des mises à jour");
             }
             ConverterState::Downloading => {
-                let hbox = gtk::Box::builder().orientation(Orientation::Horizontal).spacing(5).build();
-                let label = gtk::Label::new(Some("Téléchargement du MP3"));
-                let spinner = adw::Spinner::new();
-
-                hbox.append(&label);
-                hbox.append(&spinner);
-
-                widgets.save_button.set_child(Some(&hbox));
-                widgets.save_button.set_sensitive(false);
-                widgets.device_combo.set_sensitive(false);
-                widgets.link_input.set_sensitive(false);
+                self.set_button_loading_text(widgets, "Téléchargement du MP3");
+            }
+            ConverterState::TransitionFromDownloadSuccess => {
+                widgets.save_button.add_css_class("custom_button");
+                widgets.save_button.set_child(Some(&gtk::Label::new(Some("Succès !"))));
+                widgets.save_button.set_sensitive(true);
+                let provider = gtk::CssProvider::new();
+                provider.load_from_data(".custom_button { background-color: #26a269; }");
+                if let Some(display) = gdk::Display::default() {
+                    gtk::style_context_add_provider_for_display(
+                        &display,
+                        &provider,
+                        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                    );
+                }
+                let cloned_btn = widgets.save_button.clone();
+                let cloned_sender = sender.clone();
+                glib::timeout_add_local(Duration::from_secs(2), move || {
+                    cloned_btn.remove_css_class("custom_button");
+                    cloned_sender.input_sender().send(Message::SwitchToNormal).unwrap();
+                    glib::ControlFlow::Break
+                });
             }
         }
+    }
+}
+
+impl Converter {
+    fn set_button_loading_text(&self, widgets: &mut ConverterWidgets, text: &str) {
+        let hbox = gtk::Box::builder().orientation(Orientation::Horizontal).spacing(5).build();
+        let label = gtk::Label::new(Some(text));
+        let spinner = adw::Spinner::new();
+
+        hbox.append(&label);
+        hbox.append(&spinner);
+
+        widgets.save_button.set_child(Some(&hbox));
+        widgets.save_button.set_sensitive(false);
+        widgets.device_combo.set_sensitive(false);
+        widgets.link_input.set_sensitive(false);
     }
 }
