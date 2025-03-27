@@ -26,7 +26,9 @@ jobs:
       - name: Create build dir
         run: mkdir build && cp ./target/release/simple-mp3-downloader.exe ./build/
       - name: Copy dependencies
-        run: ucrt64 -c 'ldd "./build/simple-mp3-downloader.exe" | grep "$MSYSTEM_PREFIX\/bin\/.*dll" -o | xargs -I{} cp -f "{}" "./build"'
+        run: |
+          set MSYSTEM=UCRT64
+          msys2 -c 'ldd "./build/simple-mp3-downloader.exe" | grep "$MSYSTEM_PREFIX\/bin\/.*dll" -o | xargs -I{} cp -f "{}" "./build"'
       - name: Compress build
         run: powershell Compress-Archive -Path ".\build" -DestinationPath ".\build.zip"
       - uses: actions/upload-artifact@v4
