@@ -28,7 +28,7 @@ jobs:
       - name: Copy dependencies
         run: |
           set MSYSTEM=UCRT64
-          msys2 -c 'ldd "./build/simple-mp3-downloader.exe" | grep "/ucrt64\/bin\/.*dll" -o | xargs -I{} cp -f "{}" "./build"'
+          msys2 -c 'ldd "./build/simple-mp3-downloader.exe" | grep "/ucrt64\/bin\/.*dll" -o | xargs -I % cp -f % "./build/"'
       - name: Compress build
         run: powershell Compress-Archive -Path ".\build" -DestinationPath ".\build.zip"
       - uses: actions/upload-artifact@v4
