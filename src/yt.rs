@@ -16,6 +16,7 @@ use std::os::unix::fs::PermissionsExt;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+pub const DEFAULT_LIB_DIR: &str = "lib";
 
 #[derive(Clone, Debug)]
 pub struct YoutubeDownloader {
@@ -42,6 +43,23 @@ impl YoutubeDownloader {
 
     pub fn check_prerequisites(&self) -> bool {
         self.yt_dlp_path.exists() && self.ffmpeg_path.exists()
+    }
+    
+    #[cfg(target_os = "linux")]
+    pub fn check_update() -> Child {
+        Command::new(PathBuf::from(DEFAULT_LIB_DIR).join("yt-dlp"))
+            .arg("-U")
+            .spawn()
+            .unwrap()
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn check_update() -> Child {
+        Command::new(PathBuf::from(DEFAULT_LIB_DIR).join("yt-dlp.exe"))
+            .arg("-U")
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .unwrap()
     }
 
     #[cfg(target_os = "linux")]
@@ -119,7 +137,7 @@ impl YoutubeDownloader {
 
     #[cfg(not(target_os = "windows"))]
     pub fn download(&mut self, url: String, out_path: &Path) -> Child {
-        let child = Command::new(self.yt_dlp_path.clone())
+        Command::new(self.yt_dlp_path.clone())
             .args(vec![
                 url.as_str(),
                 "-o",
@@ -138,8 +156,6 @@ impl YoutubeDownloader {
                 "%(progress._percent_str)s"
             ])
             .spawn()
-            .unwrap();
-
-        child
+            .unwrap()
     }
 }
