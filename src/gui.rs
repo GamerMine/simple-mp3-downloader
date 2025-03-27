@@ -8,6 +8,7 @@ use relm4::{
     adw, gtk,
 };
 use std::path::PathBuf;
+use libadwaita::gtk::Orientation;
 use relm4::gtk::gdk;
 
 #[derive(Debug, Clone)]
@@ -19,12 +20,14 @@ pub enum Message {
 
 #[derive(Debug, Clone)]
 pub enum CommandMessage {
+    PreDownloadDone,
     DownloadDone,
 }
 
 enum ConverterState {
     Normal,
     WrongLink,
+    PreDownloading,
     Downloading,
 }
 
@@ -158,15 +161,23 @@ impl Component for Converter {
                             || self.link.starts_with("https://youtube.com/watch?v="))
                     {
                         self.converter_state = ConverterState::Downloading;
-
-                        let output_dir = drive.mount_point();
-                        let mut youtube = self.youtube.clone();
-                        let link = self.link.clone().to_string();
-
-                        sender.spawn_oneshot_command(move || {
-                            youtube.download(link, &output_dir).wait().unwrap();
-                            CommandMessage::DownloadDone
-                        });
+                        
+                        if !self.youtube.check_prerequisites() {
+                            self.converter_state = ConverterState::PreDownloading;
+                            sender.oneshot_command(async  {
+                                YoutubeDownloader::download_prerequisites(PathBuf::from("libs")).await;
+                                CommandMessage::PreDownloadDone
+                            });
+                        } else {
+                            let output_dir = drive.mount_point();
+                            let mut youtube = self.youtube.clone();
+                            let link = self.link.clone().to_string();
+    
+                            sender.spawn_oneshot_command(move || {
+                                youtube.download(link, &output_dir).wait().unwrap();
+                                CommandMessage::DownloadDone
+                            });
+                        }
                     } else {
                         self.converter_state = ConverterState::WrongLink;
                     }
@@ -180,10 +191,13 @@ impl Component for Converter {
     fn update_cmd(
         &mut self,
         message: Self::CommandOutput,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        sender: ComponentSender<Self>,
+        root: &Self::Root,
     ) {
         match message {
+            CommandMessage::PreDownloadDone => {
+                self.update(Message::Save, sender, root);
+            }
             CommandMessage::DownloadDone => {
                 self.converter_state = ConverterState::Normal;
             }
@@ -215,9 +229,28 @@ impl Component for Converter {
                     );
                 }
             }
-            ConverterState::Downloading => {
+            ConverterState::PreDownloading => {
+                let hbox = gtk::Box::builder().orientation(Orientation::Horizontal).spacing(5).build();
+                let label = gtk::Label::new(Some("Téléchargement des prérequis"));
                 let spinner = adw::Spinner::new();
-                widgets.save_button.set_child(Some(&spinner));
+                
+                hbox.append(&label);
+                hbox.append(&spinner);
+                
+                widgets.save_button.set_child(Some(&hbox));
+                widgets.save_button.set_sensitive(false);
+                widgets.device_combo.set_sensitive(false);
+                widgets.link_input.set_sensitive(false);
+            }
+            ConverterState::Downloading => {
+                let hbox = gtk::Box::builder().orientation(Orientation::Horizontal).spacing(5).build();
+                let label = gtk::Label::new(Some("Téléchargement du MP3"));
+                let spinner = adw::Spinner::new();
+
+                hbox.append(&label);
+                hbox.append(&spinner);
+
+                widgets.save_button.set_child(Some(&hbox));
                 widgets.save_button.set_sensitive(false);
                 widgets.device_combo.set_sensitive(false);
                 widgets.link_input.set_sensitive(false);
