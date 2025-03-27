@@ -24,6 +24,15 @@ pub struct YoutubeDownloader {
 }
 
 impl YoutubeDownloader {
+    #[cfg(target_os = "windows")]
+    pub fn new(libs_folder: PathBuf) -> Self {
+        Self {
+            yt_dlp_path: libs_folder.join("yt-dlp.exe"),
+            ffmpeg_path: libs_folder.join("ffmpeg.exe"),
+        }
+    }
+    
+    #[cfg(target_os = "linux")]
     pub fn new(libs_folder: PathBuf) -> Self {
         Self {
             yt_dlp_path: libs_folder.join("yt-dlp"),
