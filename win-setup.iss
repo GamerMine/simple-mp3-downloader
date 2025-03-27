@@ -46,8 +46,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: ".\build\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: ".\build\dlls\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: ".\build\share"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: ".\build\lib"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\build\share\*"; DestDir: "{app}\share"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\build\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

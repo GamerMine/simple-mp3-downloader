@@ -26,20 +26,20 @@ jobs:
       - name: Create build dir
         run: |
           mkdir build
-          mkdir build/dlls
-          mkdir build/lib
-          mkdir -p build/share/icons/hicolor
-          mkdir -p build/share/icons/Adwaita
-          cp ./target/release/simple-mp3-downloader.exe ./build/
+          mkdir build\dlls
+          mkdir build\lib
+          mkdir -p build\share\icons\hicolor
+          mkdir -p build\share\icons\Adwaita
+          cp .\target\release\simple-mp3-downloader.exe .\build\
       - name: Copy dependencies & required files
         run: |
           set MSYSTEM=UCRT64
           msys2 -c 'ldd "./build/simple-mp3-downloader.exe" | grep "/ucrt64\/bin\/.*dll" -o | xargs -I % cp -f % "./build/dlls/"'
-          cp -r ${{ steps.msys2.outputs.msys2-location }}/ucrt64/lib/gdk-pixbuf-2.0 ./build/libs/lib/
-          cp ${{ steps.msys2.outputs.msys2-location }}/ucrt64/share/icons/hicolor/index.theme ./build/share/icons/hicolor/
-          cp ${{ steps.msys2.outputs.msys2-location }}/ucrt64/share/icons/Adwaita/index.theme ./build/share/icons/Adwaita/
-          cp ${{ steps.msys2.outputs.msys2-location }}/ucrt64/share/icons/Adwaita/icon-theme.cache ./build/share/icons/Adwaita/
-          cp -r ${{ steps.msys2.outputs.msys2-location }}/ucrt64/share/icons/Adwaita/scalable ./build/share/icons/Adwaita/
+          cp -r ${{ steps.msys2.outputs.msys2-location }}\ucrt64\lib\gdk-pixbuf-2.0 .\build\lib\
+          cp ${{ steps.msys2.outputs.msys2-location }}\ucrt64\share\icons\hicolor\index.theme .\build\share\icons\hicolor\
+          cp ${{ steps.msys2.outputs.msys2-location }}\ucrt64\share\icons\Adwaita\index.theme .\build\share\icons\Adwaita\
+          cp ${{ steps.msys2.outputs.msys2-location }}\ucrt64\share\icons\Adwaita\icon-theme.cache .\build\share\icons\Adwaita\
+          cp -r ${{ steps.msys2.outputs.msys2-location }}\ucrt64\share\icons\Adwaita\scalable .\build\share\icons\Adwaita\
       - name: Create the installer
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
         with:
