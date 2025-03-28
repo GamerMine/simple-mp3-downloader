@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use libadwaita::glib;
 use libadwaita::gtk::Orientation;
-use relm4::gtk::gdk;
+use libadwaita::prelude::PreferencesGroupExt;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -98,6 +98,8 @@ impl Component for Converter {
             .build();
 
         let link_input = adw::EntryRow::builder().title("Lien Youtube").build();
+        let pref_group = adw::PreferencesGroup::new();
+        pref_group.add(&link_input);
         let save_button_content = adw::ButtonContent::builder()
             .label("Enregistrer")
             .icon_name("document-save")
@@ -134,7 +136,7 @@ impl Component for Converter {
 
         window.set_child(Some(&vbox));
         vbox.append(&device_combo);
-        vbox.append(&link_input);
+        vbox.append(&pref_group);
         vbox.append(&save_button);
 
         let model = Converter {
@@ -235,19 +237,10 @@ impl Component for Converter {
                 widgets.save_button.set_sensitive(true);
                 widgets.device_combo.set_sensitive(true);
                 widgets.link_input.set_sensitive(true);
-                widgets.link_input.remove_css_class("custom_entry");
+                widgets.link_input.remove_css_class("error");
             }
             ConverterState::WrongLink => {
-                widgets.link_input.add_css_class("custom_entry");
-                let provider = gtk::CssProvider::new();
-                provider.load_from_data(".custom_entry { background-color: #c01c28; }");
-                if let Some(display) = gdk::Display::default() {
-                    gtk::style_context_add_provider_for_display(
-                        &display,
-                        &provider,
-                        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-                    );
-                }
+                widgets.link_input.add_css_class("error");
             }
             ConverterState::PreDownloading => {
                 self.set_button_loading_text(widgets, "Téléchargement des prérequis");
@@ -259,22 +252,13 @@ impl Component for Converter {
                 self.set_button_loading_text(widgets, "Téléchargement du MP3");
             }
             ConverterState::TransitionFromDownloadSuccess => {
-                widgets.save_button.add_css_class("custom_button");
+                widgets.save_button.add_css_class("success");
                 widgets.save_button.set_child(Some(&gtk::Label::new(Some("Succès !"))));
                 widgets.save_button.set_sensitive(true);
-                let provider = gtk::CssProvider::new();
-                provider.load_from_data(".custom_button { background-color: #26a269; }");
-                if let Some(display) = gdk::Display::default() {
-                    gtk::style_context_add_provider_for_display(
-                        &display,
-                        &provider,
-                        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-                    );
-                }
                 let cloned_btn = widgets.save_button.clone();
                 let cloned_sender = sender.clone();
                 glib::timeout_add_local(Duration::from_secs(2), move || {
-                    cloned_btn.remove_css_class("custom_button");
+                    cloned_btn.remove_css_class("success");
                     cloned_sender.input_sender().send(Message::SwitchToNormal).unwrap();
                     glib::ControlFlow::Break
                 });
