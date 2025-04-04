@@ -8,7 +8,7 @@ on:
 jobs:
   build-win-release:
     if: github.event.pull_request.merged == true
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
